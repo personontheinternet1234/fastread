@@ -36,13 +36,21 @@ SLIDER_Y = 30
 SLIDER_WIDTH = 200
 SLIDER_HEIGHT = 8
 
-READ_UPLOADED_FILE_BTN_Y = 20
+INSTRUCTIONS_WIN_Y = 20
+INSTRUCTIONS_WIN_WIDTH = 400
+INSTRUCTIONS_WIN_HEIGHT = 70
+
+READ_UPLOADED_FILE_BTN_Y = 100
 READ_UPLOADED_FILE_BTN_WIDTH = 400
 READ_UPLOADED_FILE_BTN_HEIGHT = 40
 
-INSTRUCTIONS_WIN_Y = 80
-INSTRUCTIONS_WIN_WIDTH = 400
-INSTRUCTIONS_WIN_HEIGHT = 70
+PAUSE_PLAY_BTN_Y = 150
+PAUSE_PLAY_BTN_WIDTH = 50
+PAUSE_PLAY_BTN_HEIGHT = 25
+
+SKIP_BTN_Y = 185
+SKIP_BTN_WIDTH = 50
+SKIP_BTN_HEIGHT = 25
 
 BOX_PADDING = 12
 FULL_BOX_WIDTH_RATIO = 5
@@ -91,6 +99,10 @@ class FastReadApp:
 
         self.in_fastread = False
 
+        self.paused = False
+
+        self.should_skip = False
+
     def run(self):
         while self.running:
             for event in pygame.event.get():
@@ -111,20 +123,27 @@ class FastReadApp:
         self.full_current_response = ""
         self.last_string = None
         self.in_fastread = True
+        self.paused = False
 
-        chunk_queue = []
-        for chunk in information:
-            chunk_queue.append(chunk)
-
-        chunk_idx = 0
+        iterator = iter(information)
         wait_until = time.perf_counter()
+        chunk = None
 
-        while chunk_idx < len(chunk_queue):
+        while True:
             for inner_event in pygame.event.get():
                 self.handle_event(inner_event, in_fastread=True)
 
             if not self.running:
                 break
+
+            if self.should_skip:
+                self.should_skip = False
+                break
+
+            if self.paused:
+                self.draw_frame()
+                time.sleep(0.001)
+                continue
 
             current_time = time.perf_counter()
             if current_time < wait_until:
@@ -132,8 +151,10 @@ class FastReadApp:
                 time.sleep(0.001)
                 continue
 
-            chunk = chunk_queue[chunk_idx]
-            chunk_idx += 1
+            try:
+                chunk = next(iterator)
+            except StopIteration:
+                break
 
             if api_response == True:
                 content = chunk.choices[0].delta.content
@@ -192,18 +213,17 @@ class FastReadApp:
         if event.type == pygame.MOUSEBUTTONDOWN:
             mx, my = event.pos
             padding = BOX_PADDING
-            bx, by, bw, bh = self.full_box_rect
 
-            min_rect = pygame.Rect(bx + bw - 34, by + 4, 24, 20)
+            min_rect = pygame.Rect(self.full_box_rect[0] + self.full_box_rect[2] - 34, self.full_box_rect[1] + 4, 24, 20)
             if min_rect.collidepoint(mx, my):
                 self.full_box_minimized = not self.full_box_minimized
 
             slider_rect = pygame.Rect(SLIDER_X - 20, SLIDER_Y, SLIDER_WIDTH + 40, SLIDER_HEIGHT + 20)
             if slider_rect.collidepoint(mx, my):
                 self.slider_dragging = True
-                track_x = bx + bw - 14
-                track_y = by + padding
-                track_h = bh - padding * 2
+                track_x = self.full_box_rect[0] + self.full_box_rect[2] - 14
+                track_y = self.full_box_rect[1] + padding
+                track_h = self.full_box_rect[3] - padding * 2
                 if track_x <= mx <= track_x + 8 and track_y <= my <= track_y + track_h:
                     max_scroll = max(0, len(self.full_response_lines) - self.full_max_lines)
                     if max_scroll > 0:
@@ -211,10 +231,17 @@ class FastReadApp:
                         self.full_scroll = int(rel * max_scroll)
 
             read_uploaded_file_rect = pygame.Rect(self.screen.get_size()[0] - 50 - READ_UPLOADED_FILE_BTN_WIDTH, READ_UPLOADED_FILE_BTN_Y, READ_UPLOADED_FILE_BTN_WIDTH, READ_UPLOADED_FILE_BTN_HEIGHT)
-
             if read_uploaded_file_rect.collidepoint(mx, my) and self.selected_path:
                 pdf_text_iter = self.pdf_to_iter(self.selected_path)
                 return ("read_uploaded_file", pdf_text_iter)
+
+            pause_play_rect = pygame.Rect(self.screen.get_size()[0] - 50 - PAUSE_PLAY_BTN_WIDTH, PAUSE_PLAY_BTN_Y, PAUSE_PLAY_BTN_WIDTH, PAUSE_PLAY_BTN_HEIGHT)
+            if pause_play_rect.collidepoint(mx, my):
+                self.paused = True if not self.paused else False
+
+            skip_rect = pygame.Rect(self.screen.get_size()[0] - 50 - SKIP_BTN_WIDTH, SKIP_BTN_Y, SKIP_BTN_WIDTH, SKIP_BTN_HEIGHT)
+            if skip_rect.collidepoint(mx, my):
+                self.should_skip = True
 
         elif event.type == pygame.DROPFILE:
             self.selected_path = event.file
@@ -241,7 +268,9 @@ class FastReadApp:
             self.draw_read_uploaded_file_button()
             self.draw_text_box()
             self.draw_full_current_response()
-            self.draw_info()
+            self.draw_instructions()
+            self.draw_pause_play_button()
+            self.draw_skip_button()
         pygame.display.flip()
 
     def draw_text_box(self):
@@ -256,7 +285,7 @@ class FastReadApp:
 
         return box_x, box_y, box_width, box_height
 
-    def draw_info(self):
+    def draw_instructions(self):
         win_rect = pygame.Rect(self.screen.get_size()[0] - 50 - INSTRUCTIONS_WIN_WIDTH, INSTRUCTIONS_WIN_Y, INSTRUCTIONS_WIN_WIDTH, INSTRUCTIONS_WIN_HEIGHT)
         pygame.draw.rect(self.screen, COLOR_DARK_GRAY, win_rect, border_radius=4)
         pygame.draw.rect(self.screen, COLOR_DARKER_GRAY, win_rect, 1, border_radius=4)
@@ -275,6 +304,22 @@ class FastReadApp:
         current_file_path = self.tiny_font.render(f"Selected File: {self.selected_path}", True, COLOR_WHITE)
         self.screen.blit(label, (btn_rect.x + 6, btn_rect.y + 6))
         self.screen.blit(current_file_path, (btn_rect.x + 6, btn_rect.y + 25))
+
+    def draw_pause_play_button(self):
+        btn_rect = pygame.Rect(self.screen.get_size()[0] - 50 - PAUSE_PLAY_BTN_WIDTH, PAUSE_PLAY_BTN_Y, PAUSE_PLAY_BTN_WIDTH, PAUSE_PLAY_BTN_HEIGHT)
+        pygame.draw.rect(self.screen, COLOR_GRAY_3, btn_rect, border_radius=4)
+        pygame.draw.rect(self.screen, COLOR_LIGHT_GRAY, btn_rect, 1, border_radius=4)
+        pause_or_play_str = "Pause" if not self.paused else "Play"
+        label = self.tiny_font.render(pause_or_play_str, True, COLOR_WHITE)
+        self.screen.blit(label, (btn_rect.x + 6, btn_rect.y + 6))
+
+    def draw_skip_button(self):
+        btn_rect = pygame.Rect(self.screen.get_size()[0] - 50 - SKIP_BTN_WIDTH, SKIP_BTN_Y, SKIP_BTN_WIDTH, SKIP_BTN_HEIGHT)
+        pygame.draw.rect(self.screen, COLOR_GRAY_3, btn_rect, border_radius=4)
+        pygame.draw.rect(self.screen, COLOR_LIGHT_GRAY, btn_rect, 1, border_radius=4)
+        pause_or_play_str = "Skip"
+        label = self.tiny_font.render(pause_or_play_str, True, COLOR_WHITE)
+        self.screen.blit(label, (btn_rect.x + 6, btn_rect.y + 6))
 
     def draw_slider(self):
         pygame.draw.line(self.screen, COLOR_MEDIUM_GRAY, (SLIDER_X, SLIDER_Y + SLIDER_HEIGHT // 2), (SLIDER_X + SLIDER_WIDTH, SLIDER_Y + SLIDER_HEIGHT // 2), SLIDER_HEIGHT)

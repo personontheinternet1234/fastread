@@ -54,3 +54,5 @@ Once done, you can view the full response via the full response record.
 You can also type up new prompts once the old one is finished.
 
 You can turn off the UI if distracting using TAB
+
+You can pause / play your current content or skip it using the buttons on the top right
