@@ -3,8 +3,9 @@ from openai import OpenAI
 import time
 import re
 import os
+from pdfminer.high_level import extract_text
+import re
 
-# Constants
 COLOR_BLACK = (0, 0, 0)
 COLOR_DARK_GRAY = (10, 10, 10)
 COLOR_DARK_GRAY_2 = (20, 20, 20)
@@ -27,13 +28,21 @@ FONT_SIZE_LABEL = 20
 
 MIN_WPM = 100
 MAX_WPM = 1200
-DEFAULT_WPM = 900
+DEFAULT_WPM = 700
 SECONDS_PER_MINUTE = 60
 
 SLIDER_X = 50
 SLIDER_Y = 20
 SLIDER_WIDTH = 200
 SLIDER_HEIGHT = 8
+
+READ_UPLOADED_FILE_BTN_Y = 20
+READ_UPLOADED_FILE_BTN_WIDTH = 400
+READ_UPLOADED_FILE_BTN_HEIGHT = 40
+
+INSTRUCTIONS_WIN_Y = 80
+INSTRUCTIONS_WIN_WIDTH = 400
+INSTRUCTIONS_WIN_HEIGHT = 70
 
 BOX_PADDING = 12
 FULL_BOX_WIDTH_RATIO = 5
@@ -60,21 +69,101 @@ class FastReadApp:
         pygame.display.set_caption("fastread")
 
         self.running = True
+
+        self.show_ui = True
+
         self.current_wpm = DEFAULT_WPM
+
         self.text_input = ""
+
         self.slider_dragging = False
+
         self.full_current_response = ""
         self.full_box_minimized = False
         self.full_scroll = 0
         self.full_response_lines = []
         self.full_max_lines = 0
         self.full_box_rect = (0, 0, 0, 0)
+
         self.last_string = None
 
-    def draw_vertical_indicator(self):
-        cx, cy = self.screen.get_rect().center
-        pygame.draw.line(self.screen, COLOR_LIGHT_GRAY, (cx, 50), (cx, self.screen.get_height() / 2 - 50), 3)
-        pygame.draw.line(self.screen, COLOR_LIGHT_GRAY, (cx, self.screen.get_height() / 2 + 50), (cx, self.screen.get_height() - 100), 3)
+        self.selected_path = None
+
+        self.in_fastread = False
+
+    def run(self):
+        while self.running:
+            for event in pygame.event.get():
+                result = self.handle_event(event)
+                if result and result[0] == "submit_prompt":
+                    prompt = result[1]
+                    self.text_input = ""
+                    response_iter = self.create_new_response(prompt)
+                    self.run_fastread(response_iter, True)
+                if result and result[0] == "read_uploaded_file":
+                    pdf_text_iter = result[1]
+                    self.run_fastread(pdf_text_iter, False)
+
+            self.draw_frame()
+            time.sleep(FRAME_TIME)
+
+    def run_fastread(self, information, api_response: bool):
+        self.full_current_response = ""
+        self.last_string = None
+        self.in_fastread = True
+        
+        chunk_queue = []
+        for chunk in information:
+            chunk_queue.append(chunk)
+        
+        chunk_idx = 0
+        wait_until = time.perf_counter()
+        
+        while chunk_idx < len(chunk_queue):
+            for inner_event in pygame.event.get():
+                self.handle_event(inner_event, in_fastread=True)
+
+            if not self.running:
+                break
+            
+            current_time = time.perf_counter()
+            if current_time < wait_until:
+                # Still waiting, just render and continue
+                self.draw_frame()
+                time.sleep(0.001)  # Small sleep to avoid busy-waiting
+                continue
+            
+            chunk = chunk_queue[chunk_idx]
+            chunk_idx += 1
+
+            if api_response == True:
+                content = chunk.choices[0].delta.content
+                self.full_current_response += "" if content is None else content
+                final_string = self.raw_string_to_markdown_string(content)
+            else:
+                final_string = chunk
+                self.full_current_response += "" if final_string is None else final_string
+
+            pause_time = (1 / self.current_wpm) * SECONDS_PER_MINUTE
+            short_pause_sep = [","]
+            long_pause_sep = [".", "!", "?"]
+            junk_sep = ["\"", "\'", "-", " ", "\t", "\n", "", "—", ":", "###", "(", ")", "[", "]", "{", "}"]
+
+            if final_string in short_pause_sep:
+                wait_until = current_time + (1 * pause_time)
+            elif final_string in long_pause_sep:
+                wait_until = current_time + (3 * pause_time)
+            elif final_string in junk_sep:
+                wait_until = current_time
+            elif final_string is None:
+                wait_until = current_time
+            elif final_string is not None:
+                self.last_string = final_string
+                wait_until = current_time + pause_time
+
+            self.draw_frame()
+
+        self.in_fastread = False
 
     def handle_event(self, event, in_fastread=False):
         if event.type == pygame.QUIT:
@@ -89,8 +178,9 @@ class FastReadApp:
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_RETURN and self.text_input and not in_fastread:
-                # Submit prompt for processing
                 return ("submit_prompt", self.text_input)
+            elif event.key == pygame.K_TAB:
+                self.show_ui = False if self.show_ui else True
             elif event.key == pygame.K_BACKSPACE:
                 self.text_input = self.text_input[:-1]
             elif event.unicode.isprintable():
@@ -102,8 +192,9 @@ class FastReadApp:
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             mx, my = event.pos
-            bx, by, bw, bh = self.full_box_rect
             padding = BOX_PADDING
+            bx, by, bw, bh = self.full_box_rect
+
             min_rect = pygame.Rect(bx + bw - 34, by + 4, 24, 20)
             if min_rect.collidepoint(mx, my):
                 self.full_box_minimized = not self.full_box_minimized
@@ -119,6 +210,16 @@ class FastReadApp:
                     if max_scroll > 0:
                         rel = (my - track_y) / track_h
                         self.full_scroll = int(rel * max_scroll)
+
+            read_uploaded_file_rect = pygame.Rect(self.screen.get_size()[0] - 50 - READ_UPLOADED_FILE_BTN_WIDTH, READ_UPLOADED_FILE_BTN_Y, READ_UPLOADED_FILE_BTN_WIDTH, READ_UPLOADED_FILE_BTN_HEIGHT)
+
+            if read_uploaded_file_rect.collidepoint(mx, my) and self.selected_path:
+                pdf_text_iter = self.pdf_to_iter(self.selected_path)
+                return ("read_uploaded_file", pdf_text_iter)
+
+        elif event.type == pygame.DROPFILE:
+            self.selected_path = event.file
+
         return None
 
     def create_new_response(self, prompt):
@@ -131,68 +232,17 @@ class FastReadApp:
             stream=True
         )
 
-    def run_fastread(self, response):
-        self.full_current_response = ""
-        self.last_string = None
-
-        for chunk in response:
-            for inner_event in pygame.event.get():
-                self.handle_event(inner_event, in_fastread=True)
-
-            if not self.running:
-                break
-
-            pause_time = (1 / self.current_wpm) * SECONDS_PER_MINUTE
-            time.sleep(pause_time)
-            self.screen.fill(COLOR_BLACK)
-
-            content = chunk.choices[0].delta.content
-            self.full_current_response += "" if content is None else content
-            markdown_string = self.raw_string_to_markdown_string(content)
-
-            short_pause_sep = [","]
-            long_pause_sep = [".", "!", "?"]
-            junk_sep = ["\"", "\'", "-", " ", "\t", "\n", "", "—", ":", "###", "(", ")", "[", "]", "{", "}"]
-
-            if markdown_string in short_pause_sep:
-                time.sleep(1 * pause_time)
-                self.blit_center_text(self.last_string)
-            elif markdown_string in long_pause_sep:
-                time.sleep(3 * pause_time)
-                self.blit_center_text(self.last_string)
-            elif markdown_string in junk_sep:
-                self.blit_center_text(self.last_string)
-            elif markdown_string is None:
-                self.blit_center_text(self.last_string)
-            elif markdown_string is not None:
-                self.last_string = markdown_string
-                self.blit_center_text(markdown_string)
-
-            self.draw_slider()
-            self.draw_text_box()
-            self.draw_full_current_response()
-            self.draw_vertical_indicator()
-            pygame.display.flip()
-
-    def run(self):
-        while self.running:
-            for event in pygame.event.get():
-                result = self.handle_event(event)
-                if result and result[0] == "submit_prompt":
-                    prompt = result[1]
-                    self.text_input = ""
-                    response = self.create_new_response(prompt)
-                    self.run_fastread(response)
-
-            self.draw_frame()
-            time.sleep(FRAME_TIME)
-
     def draw_frame(self):
         self.screen.fill(COLOR_BLACK)
-        self.draw_slider()
-        self.draw_text_box()
-        self.draw_full_current_response()
         self.draw_vertical_indicator()
+        if self.in_fastread and self.last_string:
+            self.blit_center_text(self.last_string)
+        if self.show_ui:
+            self.draw_slider()
+            self.draw_read_uploaded_file_button()
+            self.draw_text_box()
+            self.draw_full_current_response()
+            self.draw_info()
         pygame.display.flip()
 
     def draw_text_box(self):
@@ -206,6 +256,26 @@ class FastReadApp:
         self.screen.blit(text_label, (box_x + 15, box_y + 10))
 
         return box_x, box_y, box_width, box_height
+
+    def draw_info(self):
+        win_rect = pygame.Rect(self.screen.get_size()[0] - 50 - INSTRUCTIONS_WIN_WIDTH, INSTRUCTIONS_WIN_Y, INSTRUCTIONS_WIN_WIDTH, INSTRUCTIONS_WIN_HEIGHT)
+        pygame.draw.rect(self.screen, COLOR_DARK_GRAY, win_rect, border_radius=4)
+        pygame.draw.rect(self.screen, COLOR_DARKER_GRAY, win_rect, 1, border_radius=4)
+        one = self.tiny_font.render("Instructions", True, COLOR_LIGHTER_GRAY)
+        two = self.tiny_font.render(f"Drag a PDF onto this window to select it for reading", True, COLOR_GRAY_2)
+        three = self.tiny_font.render(f"Press 'TAB' to show/hide all ui elements", True, COLOR_GRAY_2)
+        self.screen.blit(one, (win_rect.x + 6, win_rect.y + 6))
+        self.screen.blit(two, (win_rect.x + 6, win_rect.y + 26))
+        self.screen.blit(three, (win_rect.x + 6, win_rect.y + 46))
+
+    def draw_read_uploaded_file_button(self):
+        btn_rect = pygame.Rect(self.screen.get_size()[0] - 50 - READ_UPLOADED_FILE_BTN_WIDTH, READ_UPLOADED_FILE_BTN_Y, READ_UPLOADED_FILE_BTN_WIDTH, READ_UPLOADED_FILE_BTN_HEIGHT)
+        pygame.draw.rect(self.screen, COLOR_GRAY_3, btn_rect, border_radius=4)
+        pygame.draw.rect(self.screen, COLOR_LIGHT_GRAY, btn_rect, 1, border_radius=4)
+        label = self.tiny_font.render("Click to Read Uploaded File", True, COLOR_WHITE)
+        current_file_path = self.tiny_font.render(f"Selected File: {self.selected_path}", True, COLOR_WHITE)
+        self.screen.blit(label, (btn_rect.x + 6, btn_rect.y + 6))
+        self.screen.blit(current_file_path, (btn_rect.x + 6, btn_rect.y + 25))
 
     def draw_slider(self):
         pygame.draw.line(self.screen, COLOR_MEDIUM_GRAY, (SLIDER_X, SLIDER_Y + SLIDER_HEIGHT // 2), (SLIDER_X + SLIDER_WIDTH, SLIDER_Y + SLIDER_HEIGHT // 2), SLIDER_HEIGHT)
@@ -223,7 +293,7 @@ class FastReadApp:
         label_bg_rect.inflate_ip(15, 15)
         pygame.draw.rect(self.screen, COLOR_GRAY_2, label_bg_rect, border_radius=4)
         pygame.draw.rect(self.screen, COLOR_LIGHT_GRAY, label_bg_rect, 1, border_radius=4)
-        self.screen.blit(wpm_label, (SLIDER_X + SLIDER_WIDTH + 35, SLIDER_Y))
+        self.screen.blit(wpm_label, (SLIDER_X + SLIDER_WIDTH + 32, SLIDER_Y))
 
         return SLIDER_X, SLIDER_Y, SLIDER_WIDTH, SLIDER_HEIGHT
 
@@ -333,6 +403,11 @@ class FastReadApp:
 
         return box_x, box_y, box_width, box_height
 
+    def draw_vertical_indicator(self):
+        cx, cy = self.screen.get_rect().center
+        pygame.draw.line(self.screen, COLOR_LIGHT_GRAY, (cx, 50), (cx, self.screen.get_height() / 2 - 50), 3)
+        pygame.draw.line(self.screen, COLOR_LIGHT_GRAY, (cx, self.screen.get_height() / 2 + 50), (cx, self.screen.get_height() - 100), 3)
+
     def blit_center_text(self, text):
         if text is not None:
             cx, cy = self.screen.get_rect().center
@@ -371,3 +446,8 @@ class FastReadApp:
             content = re.sub(r'`(.*?)`', r'\1', content)
             if content:
                 return content
+
+    def pdf_to_iter(self, path):
+        text = extract_text(path)
+        for word in re.findall(r"\S+", text):
+            yield word
