@@ -32,7 +32,7 @@ DEFAULT_WPM = 700
 SECONDS_PER_MINUTE = 60
 
 SLIDER_X = 50
-SLIDER_Y = 20
+SLIDER_Y = 30
 SLIDER_WIDTH = 200
 SLIDER_HEIGHT = 8
 
@@ -51,7 +51,7 @@ TEXT_BOX_OFFSET_FROM_BOTTOM = 60
 TEXT_BOX_HEIGHT = 40
 
 LINE_HEIGHT = 40
-FRAME_TIME = 0.016  # ~60 FPS
+FRAME_TIME = 0.016  # 60 FPS
 
 class FastReadApp:
 
@@ -111,28 +111,27 @@ class FastReadApp:
         self.full_current_response = ""
         self.last_string = None
         self.in_fastread = True
-        
+
         chunk_queue = []
         for chunk in information:
             chunk_queue.append(chunk)
-        
+
         chunk_idx = 0
         wait_until = time.perf_counter()
-        
+
         while chunk_idx < len(chunk_queue):
             for inner_event in pygame.event.get():
                 self.handle_event(inner_event, in_fastread=True)
 
             if not self.running:
                 break
-            
+
             current_time = time.perf_counter()
             if current_time < wait_until:
-                # Still waiting, just render and continue
                 self.draw_frame()
-                time.sleep(0.001)  # Small sleep to avoid busy-waiting
+                time.sleep(0.001)
                 continue
-            
+
             chunk = chunk_queue[chunk_idx]
             chunk_idx += 1
 
@@ -199,7 +198,7 @@ class FastReadApp:
             if min_rect.collidepoint(mx, my):
                 self.full_box_minimized = not self.full_box_minimized
 
-            slider_rect = pygame.Rect(SLIDER_X, SLIDER_Y, SLIDER_WIDTH, SLIDER_HEIGHT + 10)
+            slider_rect = pygame.Rect(SLIDER_X - 20, SLIDER_Y, SLIDER_WIDTH + 40, SLIDER_HEIGHT + 20)
             if slider_rect.collidepoint(mx, my):
                 self.slider_dragging = True
                 track_x = bx + bw - 14
