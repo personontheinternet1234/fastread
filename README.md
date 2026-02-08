@@ -22,7 +22,7 @@ Run fastread
 python src/main.py
 ```
 
-How to use fastread with ChatGPT:
+# How to use fastread with ChatGPT:
 
 1) Set your OpenAI API Key
 ```bash
@@ -37,7 +37,7 @@ export OPENAI_API_KEY=yourapikey
 
 5) Look on the red, centered letter, and focus hard. You should be able to read and understand the response from ChatGPT much faster than you would by just scanning a response on the website.
 
-How to use fastread with PDFs:
+# How to use fastread with PDFs:
 
 1) Upload your PDF by dragging it into the window.
 
@@ -48,6 +48,8 @@ How to use fastread with PDFs:
 4) Press the button in the top right.
 
 5) Look on the red, centered letter, and focus hard. You should be able to read and understand the response much faster than you would by just scanning the pdf.
+
+# Misc:
 
 Once done, you can view the full response via the full response record.
 
