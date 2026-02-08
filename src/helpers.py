@@ -28,7 +28,7 @@ FONT_SIZE_LABEL = 20
 
 MIN_WPM = 100
 MAX_WPM = 1200
-DEFAULT_WPM = 700
+DEFAULT_WPM = 600
 SECONDS_PER_MINUTE = 60
 
 SLIDER_X = 50
@@ -158,28 +158,40 @@ class FastReadApp:
 
             if api_response == True:
                 content = chunk.choices[0].delta.content
-                self.full_current_response += "" if content is None else content
+                self.full_current_response += "" if content is None else content + " "
                 final_string = self.raw_string_to_markdown_string(content)
             else:
                 final_string = chunk
-                self.full_current_response += "" if final_string is None else final_string
+                self.full_current_response += "" if final_string is None else final_string + " "
 
             pause_time = (1 / self.current_wpm) * SECONDS_PER_MINUTE
-            short_pause_sep = [","]
+            short_pause_sep = [",", "—"]
+            mid_pause_sep = [";", ":"]
             long_pause_sep = [".", "!", "?"]
-            junk_sep = ["\"", "\'", "-", " ", "\t", "\n", "", "—", ":", "###", "(", ")", "[", "]", "{", "}"]
+            junk_sep = ["\"", "\'", "-", " ", "\t", "\n", "", "###", "(", ")", "[", "]", "{", "}"]
 
-            if final_string in short_pause_sep:
-                wait_until = current_time + (1 * pause_time)
-            elif final_string in long_pause_sep:
+            if final_string is None:
+                wait_until = current_time
+            elif final_string in short_pause_sep:
+                wait_until = current_time + (2 * pause_time)
+            elif final_string in mid_pause_sep:
                 wait_until = current_time + (3 * pause_time)
+            elif final_string in long_pause_sep:
+                wait_until = current_time + (3.5 * pause_time)
             elif final_string in junk_sep:
                 wait_until = current_time
-            elif final_string is None:
-                wait_until = current_time
             elif final_string is not None:
+                # actual content to show
+                if final_string[-1] in short_pause_sep:
+                    wait_until = current_time + (2 * pause_time)
+                elif final_string[-1] in mid_pause_sep:
+                    wait_until = current_time + (3 * pause_time)
+                elif final_string[-1] in long_pause_sep:
+                    wait_until = current_time + (3.5 * pause_time)
+                else:
+                    wait_until = current_time + pause_time
                 self.last_string = final_string
-                wait_until = current_time + pause_time
+
 
             self.draw_frame()
 
