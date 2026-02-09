@@ -18,8 +18,10 @@ COLOR_LIGHT_GRAY = (100, 100, 100)
 COLOR_LIGHTER_GRAY = (180, 180, 180)
 COLOR_WHITE = (200, 200, 200)
 COLOR_WHITE_2 = (255, 255, 255)
-COLOR_ACCENT = (255, 100, 100)
-COLOR_ACCENT_LIGHT = (255, 150, 150)
+COLOR_RED = (255, 100, 100)
+COLOR_RED_2 = (255, 150, 150)
+COLOR_PURPLE = (255, 100, 230)
+COLOR_PURPLE_2 = (255, 150, 230)
 
 FONT_SIZE_LARGE = 70
 FONT_SIZE_SMALL = 22
@@ -52,6 +54,10 @@ SKIP_BTN_Y = 185
 SKIP_BTN_WIDTH = 50
 SKIP_BTN_HEIGHT = 25
 
+CAT_BTN_Y = 220
+CAT_BTN_WIDTH = 50
+CAT_BTN_HEIGHT = 25
+
 BOX_PADDING = 12
 FULL_BOX_WIDTH_RATIO = 5
 FULL_BOX_HEIGHT_RATIO = 2
@@ -60,6 +66,8 @@ TEXT_BOX_HEIGHT = 40
 
 LINE_HEIGHT = 40
 FRAME_TIME = 0.016  # 60 FPS
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 class FastReadApp:
 
@@ -73,8 +81,13 @@ class FastReadApp:
         self.tiny_font = pygame.font.Font(None, FONT_SIZE_TINY)
         self.label_font = pygame.font.Font(None, FONT_SIZE_LABEL)
 
+        self.COLOR_ACCENT = COLOR_RED
+        self.COLOR_ACCENT_LIGHT = COLOR_RED_2
+
         self.screen = pygame.display.set_mode((1280, 720), pygame.RESIZABLE)
         pygame.display.set_caption("fastread")
+        self.CAT_CLOSED = pygame.image.load(f"{BASE_DIR}/../resources/cat_closed.png").convert_alpha()
+        self.CAT_OPEN = pygame.image.load(f"{BASE_DIR}/../resources/cat_open.png").convert_alpha()
 
         self.running = True
 
@@ -100,6 +113,9 @@ class FastReadApp:
         self.in_fastread = False
 
         self.paused = False
+
+        self.cat_mode = False
+        self.should_cat_mouth_be_open = False
 
         self.should_skip = False
 
@@ -191,7 +207,11 @@ class FastReadApp:
                 else:
                     wait_until = current_time + pause_time
                 self.last_string = final_string
-
+                if self.cat_mode:
+                    if self.should_cat_mouth_be_open:
+                        self.should_cat_mouth_be_open = False
+                    else:
+                        self.should_cat_mouth_be_open = True
 
             self.draw_frame()
 
@@ -255,6 +275,12 @@ class FastReadApp:
             if skip_rect.collidepoint(mx, my):
                 self.should_skip = True
 
+            skip_rect = pygame.Rect(self.screen.get_size()[0] - 50 - CAT_BTN_WIDTH, CAT_BTN_Y, CAT_BTN_WIDTH, CAT_BTN_HEIGHT)
+            if skip_rect.collidepoint(mx, my):
+                self.cat_mode = True if not self.cat_mode else False
+                self.COLOR_ACCENT = COLOR_PURPLE if self.cat_mode else COLOR_RED
+                self.COLOR_ACCENT_LIGHT = COLOR_PURPLE_2 if self.cat_mode else COLOR_RED_2
+
         elif event.type == pygame.DROPFILE:
             self.selected_path = event.file
 
@@ -275,6 +301,15 @@ class FastReadApp:
         self.draw_vertical_indicator()
         if self.in_fastread and self.last_string:
             self.blit_center_text(self.last_string)
+        if self.cat_mode:
+            if self.should_cat_mouth_be_open:
+                w, h = self.CAT_OPEN.get_size()
+                image = pygame.transform.smoothscale(self.CAT_OPEN, (w / 2, h / 2))
+                self.screen.blit(image, (self.screen.get_size()[0] / 2 - 240, self.screen.get_size()[1] / 2 + 60))
+            else:
+                w, h = self.CAT_CLOSED.get_size()
+                image = pygame.transform.smoothscale(self.CAT_CLOSED, (w / 2, h / 2))
+                self.screen.blit(image, (self.screen.get_size()[0] / 2 - 240, self.screen.get_size()[1] / 2 + 60))
         if self.show_ui:
             self.draw_slider()
             self.draw_read_uploaded_file_button()
@@ -283,6 +318,8 @@ class FastReadApp:
             self.draw_instructions()
             self.draw_pause_play_button()
             self.draw_skip_button()
+            self.draw_cat_button()
+
         pygame.display.flip()
 
     def draw_text_box(self):
@@ -312,7 +349,7 @@ class FastReadApp:
         btn_rect = pygame.Rect(self.screen.get_size()[0] - 50 - READ_UPLOADED_FILE_BTN_WIDTH, READ_UPLOADED_FILE_BTN_Y, READ_UPLOADED_FILE_BTN_WIDTH, READ_UPLOADED_FILE_BTN_HEIGHT)
         pygame.draw.rect(self.screen, COLOR_GRAY_3, btn_rect, border_radius=4)
         pygame.draw.rect(self.screen, COLOR_LIGHT_GRAY, btn_rect, 1, border_radius=4)
-        label = self.tiny_font.render("Click to Read Uploaded File", True, COLOR_WHITE)
+        label = self.tiny_font.render("Click Here to Read Uploaded File", True, COLOR_WHITE)
         current_file_path = self.tiny_font.render(f"Selected File: {self.selected_path}", True, COLOR_WHITE)
         self.screen.blit(label, (btn_rect.x + 6, btn_rect.y + 6))
         self.screen.blit(current_file_path, (btn_rect.x + 6, btn_rect.y + 25))
@@ -333,15 +370,23 @@ class FastReadApp:
         label = self.tiny_font.render(pause_or_play_str, True, COLOR_WHITE)
         self.screen.blit(label, (btn_rect.x + 6, btn_rect.y + 6))
 
+    def draw_cat_button(self):
+        btn_rect = pygame.Rect(self.screen.get_size()[0] - 50 - CAT_BTN_WIDTH, CAT_BTN_Y, CAT_BTN_WIDTH, CAT_BTN_HEIGHT)
+        pygame.draw.rect(self.screen, COLOR_GRAY_3, btn_rect, border_radius=4)
+        pygame.draw.rect(self.screen, COLOR_LIGHT_GRAY, btn_rect, 1, border_radius=4)
+        pause_or_play_str = "CAT" if not self.cat_mode else "un-cat"
+        label = self.tiny_font.render(pause_or_play_str, True, COLOR_WHITE)
+        self.screen.blit(label, (btn_rect.x + 6, btn_rect.y + 6))
+
     def draw_slider(self):
         pygame.draw.line(self.screen, COLOR_MEDIUM_GRAY, (SLIDER_X, SLIDER_Y + SLIDER_HEIGHT // 2), (SLIDER_X + SLIDER_WIDTH, SLIDER_Y + SLIDER_HEIGHT // 2), SLIDER_HEIGHT)
 
         progress = (self.current_wpm - MIN_WPM) / (MAX_WPM - MIN_WPM)
         filled_width = SLIDER_WIDTH * progress
-        pygame.draw.line(self.screen, COLOR_ACCENT, (SLIDER_X, SLIDER_Y + SLIDER_HEIGHT // 2), (SLIDER_X + filled_width, SLIDER_Y + SLIDER_HEIGHT // 2), SLIDER_HEIGHT)
+        pygame.draw.line(self.screen, self.COLOR_ACCENT, (SLIDER_X, SLIDER_Y + SLIDER_HEIGHT // 2), (SLIDER_X + filled_width, SLIDER_Y + SLIDER_HEIGHT // 2), SLIDER_HEIGHT)
         thumb_pos = SLIDER_X + filled_width
-        pygame.draw.circle(self.screen, COLOR_ACCENT, (int(thumb_pos), SLIDER_Y + SLIDER_HEIGHT // 2), 8)
-        pygame.draw.circle(self.screen, COLOR_ACCENT_LIGHT, (int(thumb_pos), SLIDER_Y + SLIDER_HEIGHT // 2), 6)
+        pygame.draw.circle(self.screen, self.COLOR_ACCENT, (int(thumb_pos), SLIDER_Y + SLIDER_HEIGHT // 2), 8)
+        pygame.draw.circle(self.screen, self.COLOR_ACCENT_LIGHT, (int(thumb_pos), SLIDER_Y + SLIDER_HEIGHT // 2), 6)
 
         wpm_label = self.label_font.render(f"WPM: {self.current_wpm}", True, COLOR_WHITE_2)
         wpm_label_w, wpm_label_h = wpm_label.get_size()
@@ -473,7 +518,7 @@ class FastReadApp:
             lshift = mid * spacing
             x = cx - lshift
             for ch_i, ch in enumerate(text):
-                color = COLOR_WHITE if ch_i != mid else COLOR_ACCENT
+                color = COLOR_WHITE if ch_i != mid else self.COLOR_ACCENT
                 surf = self.font.render(ch, True, color)
                 w, h = surf.get_size()
                 pos = (x - (w/2), cy - h/2)
