@@ -71,8 +71,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 class FastReadApp:
 
-    def __init__(self):
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    def __init__(self, use_openai=True):
+        if use_openai:
+            self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
         self.font = pygame.font.SysFont('Courier', FONT_SIZE_LARGE)
         self.bold_font = pygame.font.SysFont('Courier', FONT_SIZE_LARGE, bold=True)

@@ -7,7 +7,7 @@ from helpers import FastReadApp
 # export OPENAI_API_KEY=
 pygame.init()
 
-app = FastReadApp()
+app = FastReadApp(False)
 app.run()
 
 pygame.quit()
