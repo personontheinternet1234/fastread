@@ -6,6 +6,8 @@ You can use fastread to prompt ChatGPT and read responses really quickly, OR to 
 
 Inspired by this video by "Buffed" on youtube: https://youtu.be/NdKcDPBQ-Lw?si=Lkx1QNXcHn0NjjCt
 
+Used python 3.13.7
+
 (Optional) Create a virtual environment:
 ```bash
 python -m venv venv
@@ -31,7 +33,7 @@ export OPENAI_API_KEY=yourapikey
 
 2) Set wpm to however fast you want to read (750 wpm?).
 
-3) Choose whether or not to minimize the full response record (I'd minimize it if I were you, using the top right button, as it's kinda distracting)
+3) Choose whether or not to minimize the full response record (I'd minimize it if I were you, using the minus button, as it's kinda distracting)
 
 4) Write a prompt (probably something higher-level like about a definition or how something works, not math or code, as I don't render latex or anything), and press enter.
 
@@ -43,7 +45,7 @@ export OPENAI_API_KEY=yourapikey
 
 2) Set wpm to however fast you want to read (750 wpm?).
 
-3) Choose whether or not to minimize the full response record (I'd minimize it if I were you, using the top right button, as it's kinda distracting)
+3) Choose whether or not to minimize the full response record (I'd minimize it if I were you, using the minus button, as it's kinda distracting)
 
 4) Press the button in the top right.
 
